@@ -1,69 +1,78 @@
+
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import android.widget.Button
 import android.widget.ImageView
-import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
-import com.loopj.android.http.AsyncHttpClient
-import com.loopj.android.http.JsonHttpResponseHandler
-import cz.msebera.android.httpclient.Header
-import org.json.JSONObject
-import android.util.Log
+import okhttp3.*
+import org.json.JSONArray
+import java.io.IOException
+import java.util.*
 import com.codepath.project5_1.R
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var imageView: ImageView
+    private var imageUrls: List<String> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize views
         imageView = findViewById(R.id.imageView)
         val button: Button = findViewById(R.id.button)
 
-        // Load random Pokemon image on activity creation
-        loadRandomPokemonImage()
-
-        // Set button click listener
         button.setOnClickListener {
-            loadRandomPokemonImage()
+            loadRandomImage()
         }
+
+        fetchImageUrls()
     }
 
-    private fun loadRandomPokemonImage() {
-        val client = AsyncHttpClient()
-        val apiUrl = "https://pokeapi.co/api/v2/pokemon-species/${(1..807).random()}"
-        client.get(apiUrl, object : JsonHttpResponseHandler() {
-            override fun onSuccess(statusCode: Int, headers: Array<out Header>?, response: JSONObject?) {
-                super.onSuccess(statusCode, headers, response)
-                response?.let {
-                    if (it.has("sprites")) {
-                        val sprites = it.getJSONObject("sprites")
-                        val imageUrl = sprites.optString("front_default", "")
-                        if (imageUrl.isNotEmpty()) {
-                            Log.d("Pokemon", "Random Pokemon image URL: $imageUrl")
-                            Glide.with(this@MainActivity)
-                                .load(imageUrl)
-                                .fitCenter()
-                                .into(imageView)
-                        } else {
-                            Log.e("Pokemon", "No image URL found in response")
-                            Toast.makeText(this@MainActivity, "No image found", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Log.e("Pokemon", "Sprites object not found in response")
-                        Toast.makeText(this@MainActivity, "No sprites found", Toast.LENGTH_SHORT).show()
-                    }
-                }
+    private fun fetchImageUrls() {
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url("https://raw.githubusercontent.com/Biuni/PokemonGO-Pokedex/master/pokedex.json")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // Handle failure
             }
 
-            override fun onFailure(statusCode: Int, headers: Array<out Header>?, throwable: Throwable?, errorResponse: JSONObject?) {
-                super.onFailure(statusCode, headers, throwable, errorResponse)
-                Log.e("Pokemon Error", errorResponse?.toString() ?: "Unknown error")
-                Toast.makeText(this@MainActivity, "Failed to load image", Toast.LENGTH_SHORT).show()
+            override fun onResponse(call: Call, response: Response) {
+                val jsonString = response.body?.string()
+                jsonString?.let {
+                    imageUrls = parseJson(it)
+                    loadRandomImage()
+                }
             }
         })
+    }
+
+    private fun parseJson(jsonString: String): List<String> {
+        val urls = mutableListOf<String>()
+        val jsonArray = JSONArray(jsonString)
+        for (i in 0 until jsonArray.length()) {
+            val jsonObject = jsonArray.getJSONObject(i)
+            val imageUrl = jsonObject.getJSONObject("img").getString("url")
+            urls.add(imageUrl)
+        }
+        return urls
+    }
+
+    private fun loadRandomImage() {
+        if (imageUrls.isEmpty()) {
+            // Handle case when imageUrls is empty
+            return
+        }
+
+        val random = Random()
+        val randomIndex = random.nextInt(imageUrls.size)
+        val imageUrl = imageUrls[randomIndex]
+
+        Glide.with(this)
+            .load(imageUrl)
+            .into(imageView)
     }
 }
